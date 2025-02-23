@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ENS Registry UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, button { margin: 5px; padding: 5px; }
+    #output { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>ENS Registry</h1>
+
+  <!-- Domain Registration Section -->
+  <div>
+    <h2>Register Domain</h2>
+    <label for="domainInput">Domain name:</label>
+    <input type="text" id="domainInput" placeholder="example" />
+    <button id="registerBtn">Register Domain</button>
+  </div>
+
+  <!-- Domain Query Section -->
+  <div>
+    <h2>Query Domain</h2>
+    <label for="queryInput">Domain name:</label>
+    <input type="text" id="queryInput" placeholder="example" />
+    <button id="queryBtn">Check Owner</button>
+  </div>
+
+  <!-- Output Section -->
+  <div id="output"></div>
+
+  <!-- Include ethers.js from a CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+  <script>
+    // Update this with your deployed ENSRegistry contract address.
+    const contractAddress = "0xYourContractAddressHere";
+
+    // ENSRegistry ABI (simplified to functions/events used in the UI)
+    const ensRegistryAbi = [
+      {
+        "inputs": [
+          { "internalType": "bytes32", "name": "node", "type": "bytes32" },
+          { "internalType": "address", "name": "owner", "type": "address" }
+        ],
+        "name": "setOwner",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "internalType": "bytes32", "name": "node", "type": "bytes32" }
+        ],
+        "name": "getOwner",
+        "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          { "indexed": true, "internalType": "bytes32", "name": "node", "type": "bytes32" },
+          { "indexed": false, "internalType": "address", "name": "owner", "type": "address" }
+        ],
+        "name": "NameRegistered",
+        "type": "event"
+      }
+    ];
+
+    // Helper function to convert a string into a bytes32 value.
+    function toBytes32(text) {
+      const bytes = ethers.utils.toUtf8Bytes(text);
+      if (bytes.length > 31) {
+        alert("Text too long! Must be less than 32 bytes.");
+        return null;
+      }
+      return ethers.utils.hexZeroPad(bytes, 32);
+    }
+
+    // Connect to MetaMask and ensure the user is on the desired network.
+    async function connect() {
+      if (!window.ethereum) {
+        alert("MetaMask is required to interact with this dApp.");
+        throw new Error("No Ethereum provider");
+      }
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const desiredChainId = 31337; // Change this if using a different network.
+      const network = await provider.getNetwork();
+      if (network.chainId !== desiredChainId) {
+        try {
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: ethers.utils.hexValue(desiredChainId) }]
+          });
+        } catch (switchError) {
+          console.error("Error switching network:", switchError);
+          alert("Please switch your MetaMask network to the desired network.");
+          throw new Error("Incorrect network");
+        }
+      }
+      // Request account access.
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      return provider;
+    }
+
+    // Register Domain: calls setOwner(node, userAddress)
+    async function registerDomain() {
+      const provider = await connect();
+      const signer = provider.getSigner();
+      const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, signer);
+      const domain = document.getElementById("domainInput").value.trim();
+      const node = toBytes32(domain);
+      if (!node) return;
+      try {
+        document.getElementById("output").innerText = "Sending transaction...";
+        const tx = await ensRegistry.setOwner(node, await signer.getAddress());
+        await tx.wait();
+        document.getElementById("output").innerText = `Domain "${domain}" registered successfully!`;
+      } catch (err) {
+        document.getElementById("output").innerText = "Error: " + err.message;
+        console.error(err);
+      }
+    }
+
+    // Query Domain: calls getOwner(node)
+    async function queryDomain() {
+      const provider = await connect();
+      const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, provider);
+      const domain = document.getElementById("queryInput").value.trim();
+      const node = toBytes32(domain);
+      if (!node) return;
+      try {
+        const owner = await ensRegistry.getOwner(node);
+        document.getElementById("output").innerText = owner === ethers.constants.AddressZero 
+          ? `Domain "${domain}" is unregistered.` 
+          : `Domain "${domain}" is owned by: ${owner}`;
+      } catch (err) {
+        document.getElementById("output").innerText = "Error: " + err.message;
+        console.error(err);
+      }
+    }
+
+    // Event Listeners for buttons
+    document.getElementById("registerBtn").addEventListener("click", registerDomain);
+    document.getElementById("queryBtn").addEventListener("click", queryDomain);
+  </script>
+</body>
+</html>
