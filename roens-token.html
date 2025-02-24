@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Roens Token Management</title>
+  <!-- Using ethers from a CDN; we won't use its conversion helpers in our code -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .section { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; }
+    input, button { margin: 5px 0; display: block; }
+  </style>
+</head>
+<body>
+  <h1>Roens Token Management</h1>
+  <button id="connectButton">Connect Wallet</button>
+  <div id="accountDisplay">Not connected</div>
+
+  <!-- Mint section visible only to owner -->
+  <div id="ownerUI" class="section" style="display:none;">
+    <h2>Mint Tokens (Owner Only)</h2>
+    <input id="mintAddress" type="text" placeholder="Recipient Address" />
+    <input id="mintAmount" type="number" placeholder="Token Amount (whole numbers)" />
+    <button id="mintButton">Mint Tokens</button>
+  </div>
+
+  <div class="section">
+    <h2>Burn Tokens</h2>
+    <input id="burnAmount" type="number" placeholder="Amount to Burn (whole numbers)" />
+    <button id="burnButton">Burn Tokens</button>
+  </div>
+
+  <div class="section">
+    <h2>Transfer Tokens</h2>
+    <input id="transferAddress" type="text" placeholder="Recipient Address" />
+    <input id="transferAmount" type="number" placeholder="Amount to Transfer (whole numbers)" />
+    <button id="transferButton">Transfer Tokens</button>
+  </div>
+
+  <div class="section">
+    <h2>Your Token Balance</h2>
+    <button id="balanceButton">Check Balance</button>
+    <div id="balanceDisplay"></div>
+  </div>
+
+  <script>
+    // Replace with your deployed token address
+    const tokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+    // Minimal ABI: owner, mint, burn, transfer, balanceOf
+    const tokenAbi = [
+      "function owner() view returns (address)",
+      "function mint(address to, uint256 amount)",
+      "function burn(uint256 amount)",
+      "function transfer(address to, uint256 amount) returns (bool)",
+      "function balanceOf(address account) view returns (uint256)"
+    ];
+
+    let provider;
+    let signer;
+    let tokenContract;
+    let userAddress;
+    let tokenOwner;
+
+    // Custom helper: convert whole-number string to an 18-decimal string (using BigInt)
+    function parseUnits(amountStr, decimals = 18) {
+      const amount = BigInt(amountStr);
+      const multiplier = BigInt(10) ** BigInt(decimals);
+      return (amount * multiplier).toString();
+    }
+
+    // Connect wallet and fetch token owner to decide if mint UI should be shown.
+    async function connectWallet() {
+      if (window.ethereum) {
+        try {
+          await window.ethereum.request({ method: "eth_requestAccounts" });
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+          signer = provider.getSigner();
+          userAddress = await signer.getAddress();
+          document.getElementById("accountDisplay").innerText = "Connected: " + userAddress;
+
+          // Create contract instance
+          tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
+          tokenOwner = await tokenContract.owner();
+
+          // Show mint UI if connected account is owner.
+          if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
+            document.getElementById("ownerUI").style.display = "block";
+          } else {
+            document.getElementById("ownerUI").style.display = "none";
+          }
+        } catch (err) {
+          console.error("Error connecting wallet:", err);
+        }
+      } else {
+        alert("Please install MetaMask.");
+      }
+    }
+
+    document.getElementById("connectButton").addEventListener("click", connectWallet);
+
+    // Mint tokens (owner only)
+    document.getElementById("mintButton").addEventListener("click", async () => {
+      const recipient = document.getElementById("mintAddress").value;
+      const amount = document.getElementById("mintAmount").value;
+      if (!recipient || !amount) {
+        alert("Please enter both recipient address and amount.");
+        return;
+      }
+      const tokenAmount = parseUnits(amount);
+      try {
+        const tx = await tokenContract.mint(recipient, tokenAmount);
+        await tx.wait();
+        alert("Minting successful.");
+      } catch (err) {
+        console.error("Minting failed:", err);
+        alert("Minting failed: " + err.message);
+      }
+    });
+
+    // Burn tokens (any token holder can do this)
+    document.getElementById("burnButton").addEventListener("click", async () => {
+      const amount = document.getElementById("burnAmount").value;
+      if (!amount) {
+        alert("Please enter an amount to burn.");
+        return;
+      }
+      const tokenAmount = parseUnits(amount);
+      try {
+        const tx = await tokenContract.burn(tokenAmount);
+        await tx.wait();
+        alert("Burn successful.");
+      } catch (err) {
+        console.error("Burn failed:", err);
+        alert("Burn failed: " + err.message);
+      }
+    });
+
+    // Transfer tokens
+    document.getElementById("transferButton").addEventListener("click", async () => {
+      const recipient = document.getElementById("transferAddress").value;
+      const amount = document.getElementById("transferAmount").value;
+      if (!recipient || !amount) {
+        alert("Please enter both recipient address and amount.");
+        return;
+      }
+      const tokenAmount = parseUnits(amount);
+      try {
+        const tx = await tokenContract.transfer(recipient, tokenAmount);
+        await tx.wait();
+        alert("Transfer successful.");
+      } catch (err) {
+        console.error("Transfer failed:", err);
+        alert("Transfer failed: " + err.message);
+      }
+    });
+
+    // Check token balance
+    document.getElementById("balanceButton").addEventListener("click", async () => {
+      try {
+        const balance = await tokenContract.balanceOf(userAddress);
+        // Manual formatting: divide by 10^18 (assumes whole-number tokens for simplicity)
+        const formatted = (BigInt(balance.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        document.getElementById("balanceDisplay").innerText = formatted + " ROENS";
+      } catch (err) {
+        console.error("Failed to fetch balance:", err);
+      }
+    });
+  </script>
+</body>
+</html>
