@@ -33,14 +33,12 @@ describe("RoensToken", function () {
 
   it("should not allow non-owners to mint tokens", async function () {
     const mintAmount = parseUnits("1000");
-    // Check that the transaction simply reverts without matching a specific string.
     await expect(token.connect(addr1).mint(addr1.address, mintAmount))
       .to.be.reverted;
   });
 
   it("should allow token holders to burn their tokens", async function () {
     const burnAmount = parseUnits("500");
-    // Owner burns some tokens
     await token.burn(burnAmount);
     const ownerBalanceAfterBurn = await token.balanceOf(owner.address);
     const initialSupply = parseUnits("100000000");
@@ -53,5 +51,17 @@ describe("RoensToken", function () {
     await token.transfer(addr1.address, transferAmount);
     const addr1Balance = await token.balanceOf(addr1.address);
     expect(addr1Balance.toString()).to.equal(transferAmount);
+  });
+
+  it("should match the deployed contract address with addresses.json", async function () {
+    // Load the deployed addresses from the root-level addresses.json.
+    const deployedAddresses = require("../addresses.json");
+    const addressFromJSON = deployedAddresses.RoensToken;
+    const testAddress = await token.getAddress();
+
+    console.log("RoensToken deployed address (test):", testAddress);
+    console.log("RoensToken address from addresses.json:", addressFromJSON);
+
+    expect(testAddress).to.equal(addressFromJSON);
   });
 });

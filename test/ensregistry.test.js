@@ -26,12 +26,11 @@ describe("ENSRegistry", function () {
   let owner, addr1, addr2;
 
   beforeEach(async function () {
-    // Get the available signers.
+    // Get available signers.
     [owner, addr1, addr2] = await ethers.getSigners();
-    // Get the contract factory and deploy the ENSRegistry contract.
+    // Deploy the ENSRegistry contract.
     const ENSRegistryFactory = await ethers.getContractFactory("ENSRegistry");
     ensRegistry = await ENSRegistryFactory.deploy();
-    // Wait for the deployment to complete (ethers v6 method).
     await ensRegistry.waitForDeployment();
   });
 
@@ -41,34 +40,41 @@ describe("ENSRegistry", function () {
     // Initially, the node's owner should be the zero address.
     expect(await ensRegistry.getOwner(node)).to.equal(ZERO_ADDRESS);
 
-    // Set the owner and expect the event to be emitted with the correct arguments.
+    // Set the owner and expect the event to be emitted.
     await expect(ensRegistry.connect(owner).setOwner(node, owner.address))
       .to.emit(ensRegistry, "NameRegistered")
       .withArgs(node, owner.address);
 
-    // Verify that the owner is correctly set.
+    // Verify the owner is correctly set.
     expect(await ensRegistry.getOwner(node)).to.equal(owner.address);
   });
 
   it("should allow the current owner to update the node", async function () {
     const node = toBytes32("example");
 
-    // Register the node.
     await ensRegistry.connect(owner).setOwner(node, owner.address);
-    // Update the node's owner to addr1.
     await ensRegistry.connect(owner).setOwner(node, addr1.address);
-    // Confirm that the update is reflected.
     expect(await ensRegistry.getOwner(node)).to.equal(addr1.address);
   });
 
   it("should prevent non-owners from updating a node", async function () {
     const node = toBytes32("another");
 
-    // Register the node with the owner account.
     await ensRegistry.connect(owner).setOwner(node, owner.address);
-    // Attempting to update the node from addr2 (not the owner) should revert.
     await expect(
       ensRegistry.connect(addr2).setOwner(node, addr2.address)
     ).to.be.revertedWith("Unauthorized");
+  });
+
+  it("should match the deployed contract address with addresses.json", async function () {
+    // Load the deployed addresses from the root-level addresses.json.
+    const deployedAddresses = require("../addresses.json");
+    const addressFromJSON = deployedAddresses.ENSRegistry;
+    const testAddress = await ensRegistry.getAddress();
+
+    console.log("ENSRegistry deployed address (test):", testAddress);
+    console.log("ENSRegistry address from addresses.json:", addressFromJSON);
+
+    expect(testAddress).to.equal(addressFromJSON);
   });
 });
