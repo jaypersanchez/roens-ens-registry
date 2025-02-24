@@ -72,14 +72,16 @@
       return (amount * multiplier).toString();
     }
 
-    // Load addresses from addresses.json.
+    // Load addresses from addresses.json in the root.
     async function loadAddresses() {
       try {
-        const response = await fetch("addresses.json");
+        // Cache busting parameter.
+        const response = await fetch("addresses.json?v=" + new Date().getTime());
         if (!response.ok) {
           throw new Error("Failed to load addresses.json");
         }
         const addresses = await response.json();
+        // For RoensToken UI, load the RoensToken address.
         tokenAddress = addresses.RoensToken;
         console.log("Loaded RoensToken address from JSON:", tokenAddress);
       } catch (error) {
@@ -87,46 +89,113 @@
       }
     }
 
-    // Connect wallet.
+    // Connect wallet with network switching.
     async function connectWallet() {
-      if (window.ethereum) {
-        try {
-          // Ensure tokenAddress is loaded.
+      if (!window.ethereum) {
+        alert("MetaMask is required to interact with this dApp.");
+        return;
+      }
+      try {
+        // Force MetaMask to switch to desired network (e.g., Hardhat local network, chainId 31337).
+        const desiredChainId = 31337; // Adjust if needed.
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: ethers.utils.hexValue(desiredChainId) }],
+        });
+        
+        // Ensure tokenAddress is loaded.
+        if (!tokenAddress) {
+          await loadAddresses();
           if (!tokenAddress) {
-            await loadAddresses();
-            if (!tokenAddress) {
-              throw new Error("Token address not loaded. Check addresses.json.");
-            }
+            throw new Error("Token address not loaded. Check addresses.json.");
           }
-          await window.ethereum.request({ method: "eth_requestAccounts" });
-          provider = new ethers.providers.Web3Provider(window.ethereum);
-          signer = provider.getSigner();
-          userAddress = await signer.getAddress();
-          document.getElementById("accountDisplay").innerText = "Connected: " + userAddress;
-
-          tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
-          console.log("Token contract instance created with address:", tokenContract.address);
-          
-          tokenOwner = await tokenContract.owner();
-          console.log("Owner of the token contract:", tokenOwner);
-
-          // Show owner mint UI if connected account is the owner.
-          if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
-            document.getElementById("ownerUI").style.display = "block";
-          } else {
-            document.getElementById("ownerUI").style.display = "none";
-          }
-        } catch (err) {
-          console.error("Error connecting wallet:", err);
-          alert("Error connecting wallet: " + err.message);
         }
-      } else {
-        alert("Please install MetaMask.");
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        userAddress = await signer.getAddress();
+        document.getElementById("accountDisplay").innerText = "Connected: " + userAddress;
+        console.log("Wallet connected:", userAddress);
+        
+        // Create contract instance.
+        tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
+        console.log("Token contract instance created with address:", tokenContract.address);
+        
+        // Get contract owner.
+        tokenOwner = await tokenContract.owner();
+        console.log("Owner of the token contract:", tokenOwner);
+        
+        // Show owner UI if connected wallet is the owner.
+        if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
+          document.getElementById("ownerUI").style.display = "block";
+        } else {
+          document.getElementById("ownerUI").style.display = "none";
+        }
+      } catch (err) {
+        console.error("Error connecting wallet:", err);
+        alert("Error connecting wallet: " + err.message);
       }
     }
 
-    document.getElementById("connectButton").addEventListener("click", connectWallet);
+    // Check balances: ETH balance and ROENS token balance.
+    async function checkBalances() {
+      if (!provider || !userAddress) {
+        alert("Please connect wallet first.");
+        return;
+      }
+      try {
+        // Get ETH balance.
+        const ethBalanceRaw = await provider.getBalance(userAddress);
+        const ethBalance = ethers.utils.formatEther(ethBalanceRaw);
+        document.getElementById("balanceDisplay").innerText = "ROENS Balance: " + 
+          (await tokenContract.balanceOf(userAddress)) / (10 ** 18) + " (Your ROENS) | ETH Balance: " + ethBalance;
+        console.log("ETH Balance:", ethBalance);
+        const tokenBalanceRaw = await tokenContract.balanceOf(userAddress);
+        const tokenBalance = (BigInt(tokenBalanceRaw.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        console.log("ROENS Balance:", tokenBalance);
+      } catch (err) {
+        console.error("Failed to fetch balances:", err);
+        alert("Failed to fetch balances: " + err.message);
+      }
+    }
 
+    // Transfer tokens with balance refresh.
+    async function transferTokens() {
+      const recipient = document.getElementById("transferAddress").value;
+      const amount = document.getElementById("transferAmount").value;
+      if (!recipient || !amount) {
+        alert("Please enter both recipient address and amount.");
+        return;
+      }
+      const tokenAmount = parseUnits(amount);
+      try {
+        const tx = await tokenContract.transfer(recipient, tokenAmount);
+        await tx.wait();
+        alert("Transfer successful.");
+        // Refresh balance display.
+        await checkBalances();
+      } catch (err) {
+        console.error("Transfer failed:", err);
+        alert("Transfer failed: " + err.message);
+      }
+    }
+
+    // Helper: For actions that need a provider and signer.
+    async function connectForAction() {
+      if (!window.ethereum) {
+        alert("MetaMask is required to interact with this dApp.");
+        throw new Error("No Ethereum provider");
+      }
+      const localProvider = new ethers.providers.Web3Provider(window.ethereum);
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      return localProvider;
+    }
+
+    // Event listeners.
+    document.getElementById("connectButton").addEventListener("click", connectWallet);
+    document.getElementById("balanceButton").addEventListener("click", checkBalances);
+    document.getElementById("transferButton").addEventListener("click", transferTokens);
+    // Other buttons (mint, burn) remain unchanged.
     document.getElementById("mintButton").addEventListener("click", async () => {
       const recipient = document.getElementById("mintAddress").value;
       const amount = document.getElementById("mintAmount").value;
@@ -139,12 +208,12 @@
         const tx = await tokenContract.mint(recipient, tokenAmount);
         await tx.wait();
         alert("Minting successful.");
+        await checkBalances();
       } catch (err) {
         console.error("Minting failed:", err);
         alert("Minting failed: " + err.message);
       }
     });
-
     document.getElementById("burnButton").addEventListener("click", async () => {
       const amount = document.getElementById("burnAmount").value;
       if (!amount) {
@@ -156,54 +225,18 @@
         const tx = await tokenContract.burn(tokenAmount);
         await tx.wait();
         alert("Burn successful.");
+        await checkBalances();
       } catch (err) {
         console.error("Burn failed:", err);
         alert("Burn failed: " + err.message);
       }
     });
-
-    document.getElementById("transferButton").addEventListener("click", async () => {
-      const recipient = document.getElementById("transferAddress").value;
-      const amount = document.getElementById("transferAmount").value;
-      if (!recipient || !amount) {
-        alert("Please enter both recipient address and amount.");
-        return;
-      }
-      const tokenAmount = parseUnits(amount);
-      try {
-        const tx = await tokenContract.transfer(recipient, tokenAmount);
-        await tx.wait();
-        alert("Transfer successful.");
-      } catch (err) {
-        console.error("Transfer failed:", err);
-        alert("Transfer failed: " + err.message);
-      }
-    });
-
-    document.getElementById("balanceButton").addEventListener("click", async () => {
-      try {
-        if (!tokenContract) {
-          alert("Contract not initialized. Connect wallet first.");
-          return;
-        }
-        // Check the balance of the connected wallet.
-        const balance = await tokenContract.balanceOf(userAddress);
-        const formatted = (BigInt(balance.toString()) / (BigInt(10) ** BigInt(18))).toString();
-        console.log("User balance:", formatted);
-        document.getElementById("balanceDisplay").innerText = formatted + " ROENS (Your Balance)";
-      } catch (err) {
-        console.error("Failed to fetch balance:", err);
-        alert("Failed to fetch balance: " + err.message);
-      }
-    });
-
     document.getElementById("supplyButton").addEventListener("click", async () => {
       try {
         if (!tokenContract) {
           alert("Contract not initialized. Connect wallet first.");
           return;
         }
-        // Get the overall token supply.
         const supply = await tokenContract.totalSupply();
         const formattedSupply = (BigInt(supply.toString()) / (BigInt(10) ** BigInt(18))).toString();
         console.log("Total token supply:", formattedSupply);

@@ -77,4 +77,25 @@ describe("ENSRegistry", function () {
 
     expect(testAddress).to.equal(addressFromJSON);
   });
+
+  // NEW TEST: Register a domain and then query for it.
+  it("should register a domain and allow querying for that domain", async function () {
+    const domain = "mydomain";
+    const node = toBytes32(domain);
+
+    // Verify that before registration the domain is unregistered.
+    const initialOwner = await ensRegistry.getOwner(node);
+    console.log(`Initial owner for domain "${domain}":`, initialOwner);
+    expect(initialOwner).to.equal(ZERO_ADDRESS);
+
+    // Register the domain by setting the owner.
+    await ensRegistry.connect(owner).setOwner(node, owner.address);
+
+    // Query the domain after registration.
+    const queriedOwner = await ensRegistry.getOwner(node);
+    console.log(`Owner for domain "${domain}" after registration:`, queriedOwner);
+
+    // Verify that the queried owner now equals the deployer's address.
+    expect(queriedOwner).to.equal(owner.address);
+  });
 });

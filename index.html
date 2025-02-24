@@ -2,15 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ENS Registry UI</title>
+  <title>ENS Registry UI & Wallet Balances</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     input, button { margin: 5px; padding: 5px; }
     #output { margin-top: 20px; }
+    #walletDisplay { margin-top: 10px; font-weight: bold; }
+    .balanceSection { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <h1>ENS Registry</h1>
+  <h1>ENS Registry & Wallet Balances</h1>
+
+  <!-- Explicit Connect Wallet Button -->
+  <button id="connectButton">Connect Wallet</button>
+  <div id="walletDisplay">Not connected</div>
+  
+  <!-- Balances Section -->
+  <div class="balanceSection">
+    <h2>Your Balances</h2>
+    <button id="balanceButton">Check Balances</button>
+    <div id="ethBalanceDisplay">ETH Balance: --</div>
+    <div id="roensBalanceDisplay">ROENS Balance: --</div>
+  </div>
 
   <!-- Domain Registration Section -->
   <div>
@@ -35,7 +49,10 @@
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
   <script>
-    let contractAddress = "";
+    // Global variables for addresses
+    let ensRegistryAddress = "";
+    let roensTokenAddress = "";
+    // We'll use the ENSRegistry ABI for the domain functions.
     const ensRegistryAbi = [
       {
         "inputs": [
@@ -67,7 +84,22 @@
       }
     ];
 
-    // Helper: convert a string to bytes32.
+    // For ROENS token (ERC20) functions.
+    const erc20Abi = [
+      "function balanceOf(address account) view returns (uint256)",
+      "function totalSupply() view returns (uint256)",
+      "function owner() view returns (address)",
+      "function mint(address to, uint256 amount)",
+      "function burn(uint256 amount)",
+      "function transfer(address to, uint256 amount) returns (bool)"
+    ];
+
+    let provider;
+    let signer;
+    let userAddress;
+    let roensTokenContract; // We'll use this to fetch ROENS balances
+
+    // Custom helper: convert a string to bytes32.
     function toBytes32(text) {
       const bytes = ethers.utils.toUtf8Bytes(text);
       if (bytes.length > 31) {
@@ -80,59 +112,112 @@
     // Load addresses from addresses.json in the root.
     async function loadAddresses() {
       try {
-        const response = await fetch("addresses.json");
+        // Append query parameter to prevent caching.
+        const response = await fetch("addresses.json?v=" + new Date().getTime());
         if (!response.ok) {
           throw new Error("Failed to load addresses.json");
         }
         const addresses = await response.json();
-        contractAddress = addresses.ENSRegistry;
-        console.log("Loaded ENSRegistry address:", contractAddress);
+        ensRegistryAddress = addresses.ENSRegistry;
+        roensTokenAddress = addresses.RoensToken;
+        console.log("Loaded ENSRegistry address:", ensRegistryAddress);
+        console.log("Loaded RoensToken address:", roensTokenAddress);
       } catch (error) {
         console.error("Error loading addresses:", error);
       }
     }
 
-    // Connect wallet
-    async function connect() {
+    // Explicitly connect wallet and show connected address.
+    async function connectWallet() {
+      if (!window.ethereum) {
+        alert("MetaMask is required to interact with this dApp.");
+        return;
+      }
+      try {
+        // Force network switch if needed (e.g., to Hardhat local network, chainId 31337)
+        const desiredChainId = 31337; // Change if needed.
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: ethers.utils.hexValue(desiredChainId) }],
+        });
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        userAddress = await signer.getAddress();
+        document.getElementById("walletDisplay").innerText = "Connected: " + userAddress;
+        console.log("Wallet connected:", userAddress);
+
+        // Initialize ROENS token contract to fetch token balances.
+        if (!roensTokenAddress) {
+          await loadAddresses();
+          if (!roensTokenAddress) {
+            throw new Error("RoensToken address not loaded.");
+          }
+        }
+        roensTokenContract = new ethers.Contract(roensTokenAddress, erc20Abi, signer);
+        console.log("RoensToken contract instance created with address:", roensTokenContract.address);
+      } catch (err) {
+        console.error("Error connecting wallet:", err);
+        alert("Error connecting wallet: " + err.message);
+      }
+    }
+
+    // Check Balances: Fetch ETH and ROENS token balances.
+    async function checkBalances() {
+      if (!provider || !userAddress) {
+        alert("Please connect wallet first.");
+        return;
+      }
+      try {
+        // Get ETH balance.
+        const ethBalanceRaw = await provider.getBalance(userAddress);
+        const ethBalance = ethers.utils.formatEther(ethBalanceRaw);
+        document.getElementById("ethBalanceDisplay").innerText = "ETH Balance: " + ethBalance;
+        console.log("ETH Balance:", ethBalance);
+
+        // Get ROENS token balance.
+        if (!roensTokenContract) {
+          alert("Roens token contract not initialized. Connect wallet first.");
+          return;
+        }
+        const tokenBalanceRaw = await roensTokenContract.balanceOf(userAddress);
+        // Format assuming 18 decimals.
+        const tokenBalance = (BigInt(tokenBalanceRaw.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        document.getElementById("roensBalanceDisplay").innerText = "ROENS Balance: " + tokenBalance;
+        console.log("ROENS Balance:", tokenBalance);
+      } catch (err) {
+        console.error("Failed to fetch balances:", err);
+        alert("Failed to fetch balances: " + err.message);
+      }
+    }
+
+    // Helper: For actions that need a provider and signer.
+    async function connectForAction() {
       if (!window.ethereum) {
         alert("MetaMask is required to interact with this dApp.");
         throw new Error("No Ethereum provider");
       }
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const desiredChainId = 31337; // change if needed
-      const network = await provider.getNetwork();
-      if (network.chainId !== desiredChainId) {
-        try {
-          await window.ethereum.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: ethers.utils.hexValue(desiredChainId) }]
-          });
-        } catch (switchError) {
-          console.error("Error switching network:", switchError);
-          alert("Please switch your MetaMask network to the desired network.");
-          throw new Error("Incorrect network");
-        }
-      }
+      const localProvider = new ethers.providers.Web3Provider(window.ethereum);
       await window.ethereum.request({ method: "eth_requestAccounts" });
-      return provider;
+      return localProvider;
     }
 
     // Register Domain: calls setOwner(node, userAddress)
     async function registerDomain() {
       await loadAddresses();
-      if (!contractAddress) {
-        alert("Contract address not loaded.");
+      if (!ensRegistryAddress) {
+        alert("ENSRegistry contract address not loaded.");
         return;
       }
-      const provider = await connect();
-      const signer = provider.getSigner();
-      const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, signer);
+      const providerForDomain = await connectForAction();
+      const signerForDomain = providerForDomain.getSigner();
+      const ensRegistry = new ethers.Contract(ensRegistryAddress, ensRegistryAbi, signerForDomain);
       const domain = document.getElementById("domainInput").value.trim();
       const node = toBytes32(domain);
       if (!node) return;
       try {
         document.getElementById("output").innerText = "Sending transaction...";
-        const tx = await ensRegistry.setOwner(node, await signer.getAddress());
+        const tx = await ensRegistry.setOwner(node, await signerForDomain.getAddress());
         await tx.wait();
         document.getElementById("output").innerText = `Domain "${domain}" registered successfully!`;
       } catch (err) {
@@ -144,20 +229,20 @@
     // Query Domain: calls getOwner(node)
     async function queryDomain() {
       await loadAddresses();
-      if (!contractAddress) {
-        alert("Contract address not loaded.");
+      if (!ensRegistryAddress) {
+        alert("ENSRegistry contract address not loaded.");
         return;
       }
-      const provider = await connect();
-      const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, provider);
+      const providerForQuery = await connectForAction();
+      const ensRegistry = new ethers.Contract(ensRegistryAddress, ensRegistryAbi, providerForQuery);
       const domain = document.getElementById("queryInput").value.trim();
       const node = toBytes32(domain);
       if (!node) return;
       try {
-        const owner = await ensRegistry.getOwner(node);
-        document.getElementById("output").innerText = owner === ethers.constants.AddressZero 
+        const ownerAddr = await ensRegistry.getOwner(node);
+        document.getElementById("output").innerText = ownerAddr === ethers.constants.AddressZero 
           ? `Domain "${domain}" is unregistered.` 
-          : `Domain "${domain}" is owned by: ${owner}`;
+          : `Domain "${domain}" is owned by: ${ownerAddr}`;
       } catch (err) {
         document.getElementById("output").innerText = "Error: " + err.message;
         console.error(err);
@@ -165,10 +250,19 @@
     }
 
     // Set up event listeners.
+    document.getElementById("connectButton").addEventListener("click", connectWallet);
     document.getElementById("registerBtn").addEventListener("click", registerDomain);
     document.getElementById("queryBtn").addEventListener("click", queryDomain);
+    document.getElementById("balanceButton").addEventListener("click", checkBalances);
+
     // Load addresses on page load.
     window.addEventListener("load", loadAddresses);
   </script>
+
+  <!-- Balances Display Section -->
+  <div class="balanceSection">
+    <div id="ethBalanceDisplay">ETH Balance: --</div>
+    <div id="roensBalanceDisplay">ROENS Balance: --</div>
+  </div>
 </body>
 </html>
