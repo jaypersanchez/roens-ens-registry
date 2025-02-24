@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Roens Token Management</title>
-  <!-- Using ethers from a CDN; we won't use its conversion helpers in our code -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     .section { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; }
@@ -44,10 +43,7 @@
   </div>
 
   <script>
-    // Replace with your deployed token address
-    const tokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-
-    // Minimal ABI: owner, mint, burn, transfer, balanceOf
+    let tokenAddress = "";
     const tokenAbi = [
       "function owner() view returns (address)",
       "function mint(address to, uint256 amount)",
@@ -62,14 +58,29 @@
     let userAddress;
     let tokenOwner;
 
-    // Custom helper: convert whole-number string to an 18-decimal string (using BigInt)
+    // Custom helper: convert whole-number string to an 18-decimal string.
     function parseUnits(amountStr, decimals = 18) {
       const amount = BigInt(amountStr);
       const multiplier = BigInt(10) ** BigInt(decimals);
       return (amount * multiplier).toString();
     }
 
-    // Connect wallet and fetch token owner to decide if mint UI should be shown.
+    // Load addresses from addresses.json.
+    async function loadAddresses() {
+      try {
+        const response = await fetch("addresses.json");
+        if (!response.ok) {
+          throw new Error("Failed to load addresses.json");
+        }
+        const addresses = await response.json();
+        tokenAddress = addresses.RoensToken;
+        console.log("Loaded RoensToken address:", tokenAddress);
+      } catch (error) {
+        console.error("Error loading addresses:", error);
+      }
+    }
+
+    // Connect wallet.
     async function connectWallet() {
       if (window.ethereum) {
         try {
@@ -79,11 +90,10 @@
           userAddress = await signer.getAddress();
           document.getElementById("accountDisplay").innerText = "Connected: " + userAddress;
 
-          // Create contract instance
           tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
           tokenOwner = await tokenContract.owner();
 
-          // Show mint UI if connected account is owner.
+          // Show owner mint UI if the connected account is the owner.
           if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
             document.getElementById("ownerUI").style.display = "block";
           } else {
@@ -99,7 +109,6 @@
 
     document.getElementById("connectButton").addEventListener("click", connectWallet);
 
-    // Mint tokens (owner only)
     document.getElementById("mintButton").addEventListener("click", async () => {
       const recipient = document.getElementById("mintAddress").value;
       const amount = document.getElementById("mintAmount").value;
@@ -118,7 +127,6 @@
       }
     });
 
-    // Burn tokens (any token holder can do this)
     document.getElementById("burnButton").addEventListener("click", async () => {
       const amount = document.getElementById("burnAmount").value;
       if (!amount) {
@@ -136,7 +144,6 @@
       }
     });
 
-    // Transfer tokens
     document.getElementById("transferButton").addEventListener("click", async () => {
       const recipient = document.getElementById("transferAddress").value;
       const amount = document.getElementById("transferAmount").value;
@@ -155,17 +162,18 @@
       }
     });
 
-    // Check token balance
     document.getElementById("balanceButton").addEventListener("click", async () => {
       try {
         const balance = await tokenContract.balanceOf(userAddress);
-        // Manual formatting: divide by 10^18 (assumes whole-number tokens for simplicity)
         const formatted = (BigInt(balance.toString()) / (BigInt(10) ** BigInt(18))).toString();
         document.getElementById("balanceDisplay").innerText = formatted + " ROENS";
       } catch (err) {
         console.error("Failed to fetch balance:", err);
       }
     });
+
+    // Load addresses on page load.
+    window.addEventListener("load", loadAddresses);
   </script>
 </body>
 </html>

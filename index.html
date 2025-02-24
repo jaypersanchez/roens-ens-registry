@@ -35,10 +35,7 @@
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
   <script>
-    // Update this with your deployed ENSRegistry contract address.
-    const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-
-    // ENSRegistry ABI (simplified to functions/events used in the UI)
+    let contractAddress = "";
     const ensRegistryAbi = [
       {
         "inputs": [
@@ -70,7 +67,7 @@
       }
     ];
 
-    // Helper function to convert a string into a bytes32 value.
+    // Helper: convert a string to bytes32.
     function toBytes32(text) {
       const bytes = ethers.utils.toUtf8Bytes(text);
       if (bytes.length > 31) {
@@ -80,14 +77,29 @@
       return ethers.utils.hexZeroPad(bytes, 32);
     }
 
-    // Connect to MetaMask and ensure the user is on the desired network.
+    // Load addresses from addresses.json in the root.
+    async function loadAddresses() {
+      try {
+        const response = await fetch("addresses.json");
+        if (!response.ok) {
+          throw new Error("Failed to load addresses.json");
+        }
+        const addresses = await response.json();
+        contractAddress = addresses.ENSRegistry;
+        console.log("Loaded ENSRegistry address:", contractAddress);
+      } catch (error) {
+        console.error("Error loading addresses:", error);
+      }
+    }
+
+    // Connect wallet
     async function connect() {
       if (!window.ethereum) {
         alert("MetaMask is required to interact with this dApp.");
         throw new Error("No Ethereum provider");
       }
       const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const desiredChainId = 31337; // Change this if using a different network.
+      const desiredChainId = 31337; // change if needed
       const network = await provider.getNetwork();
       if (network.chainId !== desiredChainId) {
         try {
@@ -101,13 +113,17 @@
           throw new Error("Incorrect network");
         }
       }
-      // Request account access.
       await window.ethereum.request({ method: "eth_requestAccounts" });
       return provider;
     }
 
     // Register Domain: calls setOwner(node, userAddress)
     async function registerDomain() {
+      await loadAddresses();
+      if (!contractAddress) {
+        alert("Contract address not loaded.");
+        return;
+      }
       const provider = await connect();
       const signer = provider.getSigner();
       const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, signer);
@@ -127,6 +143,11 @@
 
     // Query Domain: calls getOwner(node)
     async function queryDomain() {
+      await loadAddresses();
+      if (!contractAddress) {
+        alert("Contract address not loaded.");
+        return;
+      }
       const provider = await connect();
       const ensRegistry = new ethers.Contract(contractAddress, ensRegistryAbi, provider);
       const domain = document.getElementById("queryInput").value.trim();
@@ -143,9 +164,11 @@
       }
     }
 
-    // Event Listeners for buttons
+    // Set up event listeners.
     document.getElementById("registerBtn").addEventListener("click", registerDomain);
     document.getElementById("queryBtn").addEventListener("click", queryDomain);
+    // Load addresses on page load.
+    window.addEventListener("load", loadAddresses);
   </script>
 </body>
 </html>
