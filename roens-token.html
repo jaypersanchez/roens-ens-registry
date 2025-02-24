@@ -81,7 +81,7 @@
         }
         const addresses = await response.json();
         tokenAddress = addresses.RoensToken;
-        console.log("Loaded RoensToken address:", tokenAddress);
+        console.log("Loaded RoensToken address from JSON:", tokenAddress);
       } catch (error) {
         console.error("Error loading addresses:", error);
       }
@@ -105,7 +105,10 @@
           document.getElementById("accountDisplay").innerText = "Connected: " + userAddress;
 
           tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
+          console.log("Token contract instance created with address:", tokenContract.address);
+          
           tokenOwner = await tokenContract.owner();
+          console.log("Owner of the token contract:", tokenOwner);
 
           // Show owner mint UI if connected account is the owner.
           if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
@@ -186,6 +189,7 @@
         // Check the balance of the connected wallet.
         const balance = await tokenContract.balanceOf(userAddress);
         const formatted = (BigInt(balance.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        console.log("User balance:", formatted);
         document.getElementById("balanceDisplay").innerText = formatted + " ROENS (Your Balance)";
       } catch (err) {
         console.error("Failed to fetch balance:", err);
@@ -202,6 +206,7 @@
         // Get the overall token supply.
         const supply = await tokenContract.totalSupply();
         const formattedSupply = (BigInt(supply.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        console.log("Total token supply:", formattedSupply);
         document.getElementById("supplyDisplay").innerText = formattedSupply + " ROENS (Total Supply)";
       } catch (err) {
         console.error("Failed to fetch total supply:", err);
