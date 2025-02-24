@@ -38,8 +38,14 @@
 
   <div class="section">
     <h2>Your Token Balance</h2>
-    <button id="balanceButton">Check Balance</button>
+    <button id="balanceButton">Check My Balance</button>
     <div id="balanceDisplay"></div>
+  </div>
+  
+  <div class="section">
+    <h2>Total Token Supply</h2>
+    <button id="supplyButton">Check Total Supply</button>
+    <div id="supplyDisplay"></div>
   </div>
 
   <script>
@@ -49,7 +55,8 @@
       "function mint(address to, uint256 amount)",
       "function burn(uint256 amount)",
       "function transfer(address to, uint256 amount) returns (bool)",
-      "function balanceOf(address account) view returns (uint256)"
+      "function balanceOf(address account) view returns (uint256)",
+      "function totalSupply() view returns (uint256)"
     ];
 
     let provider;
@@ -84,6 +91,13 @@
     async function connectWallet() {
       if (window.ethereum) {
         try {
+          // Ensure tokenAddress is loaded.
+          if (!tokenAddress) {
+            await loadAddresses();
+            if (!tokenAddress) {
+              throw new Error("Token address not loaded. Check addresses.json.");
+            }
+          }
           await window.ethereum.request({ method: "eth_requestAccounts" });
           provider = new ethers.providers.Web3Provider(window.ethereum);
           signer = provider.getSigner();
@@ -93,7 +107,7 @@
           tokenContract = new ethers.Contract(tokenAddress, tokenAbi, signer);
           tokenOwner = await tokenContract.owner();
 
-          // Show owner mint UI if the connected account is the owner.
+          // Show owner mint UI if connected account is the owner.
           if (userAddress.toLowerCase() === tokenOwner.toLowerCase()) {
             document.getElementById("ownerUI").style.display = "block";
           } else {
@@ -101,6 +115,7 @@
           }
         } catch (err) {
           console.error("Error connecting wallet:", err);
+          alert("Error connecting wallet: " + err.message);
         }
       } else {
         alert("Please install MetaMask.");
@@ -164,11 +179,33 @@
 
     document.getElementById("balanceButton").addEventListener("click", async () => {
       try {
+        if (!tokenContract) {
+          alert("Contract not initialized. Connect wallet first.");
+          return;
+        }
+        // Check the balance of the connected wallet.
         const balance = await tokenContract.balanceOf(userAddress);
         const formatted = (BigInt(balance.toString()) / (BigInt(10) ** BigInt(18))).toString();
-        document.getElementById("balanceDisplay").innerText = formatted + " ROENS";
+        document.getElementById("balanceDisplay").innerText = formatted + " ROENS (Your Balance)";
       } catch (err) {
         console.error("Failed to fetch balance:", err);
+        alert("Failed to fetch balance: " + err.message);
+      }
+    });
+
+    document.getElementById("supplyButton").addEventListener("click", async () => {
+      try {
+        if (!tokenContract) {
+          alert("Contract not initialized. Connect wallet first.");
+          return;
+        }
+        // Get the overall token supply.
+        const supply = await tokenContract.totalSupply();
+        const formattedSupply = (BigInt(supply.toString()) / (BigInt(10) ** BigInt(18))).toString();
+        document.getElementById("supplyDisplay").innerText = formattedSupply + " ROENS (Total Supply)";
+      } catch (err) {
+        console.error("Failed to fetch total supply:", err);
+        alert("Failed to fetch total supply: " + err.message);
       }
     });
 

@@ -53,15 +53,38 @@ describe("RoensToken", function () {
     expect(addr1Balance.toString()).to.equal(transferAmount);
   });
 
-  it("should match the deployed contract address with addresses.json", async function () {
-    // Load the deployed addresses from the root-level addresses.json.
-    const deployedAddresses = require("../addresses.json");
-    const addressFromJSON = deployedAddresses.RoensToken;
-    const testAddress = await token.getAddress();
+  it("should display the owner, transfer 100 tokens to account 19, and verify balances", async function () {
+    // Validate and display the owner of the contract.
+    const contractOwner = await token.owner();
+    console.log("Owner of the contract:", contractOwner);
+    expect(contractOwner).to.equal(owner.address);
 
-    console.log("RoensToken deployed address (test):", testAddress);
-    console.log("RoensToken address from addresses.json:", addressFromJSON);
+    // Retrieve all available signers.
+    const allSigners = await ethers.getSigners();
+    expect(allSigners.length).to.be.at.least(19);
+    const account19 = allSigners[18]; // account 19 (0-indexed)
+    console.log("Account 19 address:", account19.address);
 
-    expect(testAddress).to.equal(addressFromJSON);
+    // Get the owner's balance before the transfer.
+    const ownerInitialBalance = await token.balanceOf(owner.address);
+    console.log("Owner initial balance:", ownerInitialBalance.toString());
+
+    // Transfer 100 tokens from the owner to account 19.
+    const transferAmount = parseUnits("100");
+    const tx = await token.transfer(account19.address, transferAmount);
+    await tx.wait();
+
+    // Get the owner's and account 19's balance after the transfer.
+    const ownerFinalBalance = await token.balanceOf(owner.address);
+    const account19Balance = await token.balanceOf(account19.address);
+    console.log("Owner final balance:", ownerFinalBalance.toString());
+    console.log("Account 19 token balance:", account19Balance.toString());
+
+    // Verify that the owner's balance decreased by 100 tokens.
+    expect(ownerFinalBalance.toString()).to.equal(
+      (BigInt(ownerInitialBalance.toString()) - BigInt(transferAmount)).toString()
+    );
+    // Verify that account 19 received exactly 100 tokens.
+    expect(account19Balance.toString()).to.equal(transferAmount);
   });
 });
