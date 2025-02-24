@@ -83,6 +83,7 @@
         const addresses = await response.json();
         // For RoensToken UI, load the RoensToken address.
         tokenAddress = addresses.RoensToken;
+        //const tokenAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
         console.log("Loaded RoensToken address from JSON:", tokenAddress);
       } catch (error) {
         console.error("Error loading addresses:", error);
