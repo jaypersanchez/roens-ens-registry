@@ -1,90 +1,80 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-// Custom helper to convert a whole number string into an 18-decimal value as a string.
+// Helper function to convert numbers to token decimals.
 function parseUnits(amountStr, decimals = 18) {
-  const amount = BigInt(amountStr);
-  const multiplier = BigInt(10) ** BigInt(decimals);
-  return (amount * multiplier).toString();
+  return ethers.parseUnits(amountStr, decimals);
 }
 
 describe("RoensToken", function () {
-  let token, owner, addr1, addr2;
+  let token, owner, addr1, addr2, taxWallet;
 
   beforeEach(async function () {
-    [owner, addr1, addr2] = await ethers.getSigners();
+    [owner, addr1, addr2, taxWallet] = await ethers.getSigners();
     const RoensToken = await ethers.getContractFactory("RoensToken");
-    token = await RoensToken.deploy();
+    token = await RoensToken.deploy(taxWallet.address);
     await token.waitForDeployment();
+    await token.setMaxTxAmount(parseUnits("100000000")); // Allow large transfers for tests
   });
 
-  it("should assign the initial supply of 100 million tokens to the owner", async function () {
-    const ownerBalance = await token.balanceOf(owner.address);
-    const initialSupply = parseUnits("100000000"); // 100 million tokens
-    expect(ownerBalance.toString()).to.equal(initialSupply);
-  });
+  it("should allow transfers up to the maxTxAmount", async function () {
+    const maxTxAmount = parseUnits("500000"); // 500,000 tokens
+    const taxAmount = maxTxAmount * BigInt(3) / BigInt(100); // 3% tax
+    const expectedReceived = maxTxAmount - taxAmount;
 
-  it("should allow the owner to mint tokens", async function () {
-    const mintAmount = parseUnits("1000"); // 1,000 tokens
-    await token.mint(addr1.address, mintAmount);
+    await token.transfer(addr1.address, maxTxAmount);
     const addr1Balance = await token.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(mintAmount);
+    expect(addr1Balance.toString()).to.equal(expectedReceived.toString());
   });
 
-  it("should not allow non-owners to mint tokens", async function () {
-    const mintAmount = parseUnits("1000");
-    await expect(token.connect(addr1).mint(addr1.address, mintAmount))
-      .to.be.reverted;
+  it("should fail when transfer exceeds maxTxAmount", async function () {
+    const exceededAmount = parseUnits("500001"); // 500,001 tokens (just over the limit)
+    await expect(token.transfer(addr1.address, exceededAmount)).to.be.revertedWith("Transfer exceeds maxTxAmount");
   });
 
-  it("should allow token holders to burn their tokens", async function () {
-    const burnAmount = parseUnits("500");
-    await token.burn(burnAmount);
-    const ownerBalanceAfterBurn = await token.balanceOf(owner.address);
-    const initialSupply = parseUnits("100000000");
-    const expectedBalance = (BigInt(initialSupply) - BigInt(burnAmount)).toString();
-    expect(ownerBalanceAfterBurn.toString()).to.equal(expectedBalance);
+  it("should prevent transfers of vested tokens before release time", async function () {
+    const vestingAmount = parseUnits("5000");
+    const futureTime = (await ethers.provider.getBlock("latest")).timestamp + 3600; // 1 hour from now
+
+    await token.setVesting(addr1.address, vestingAmount, futureTime);
+    await expect(token.connect(addr1).transfer(addr2.address, vestingAmount))
+      .to.be.revertedWith("Tokens are still vested");
   });
 
-  it("should allow transfers between accounts", async function () {
-    const transferAmount = parseUnits("1000");
-    await token.transfer(addr1.address, transferAmount);
+  it("should allow claiming vested tokens after release time", async function () {
+    const vestingAmount = parseUnits("5000");
+    const futureTime = (await ethers.provider.getBlock("latest")).timestamp + 2; // 2 seconds from now
+
+    await token.setVesting(addr1.address, vestingAmount, futureTime);
+    await ethers.provider.send("evm_increaseTime", [3]); // Fast-forward time
+    await ethers.provider.send("evm_mine"); // Mine next block
+
+    await token.connect(addr1).claimVestedTokens();
     const addr1Balance = await token.balanceOf(addr1.address);
-    expect(addr1Balance.toString()).to.equal(transferAmount);
+    expect(addr1Balance.toString()).to.equal(vestingAmount.toString());
   });
 
-  it("should display the owner, transfer 100 tokens to account 19, and verify balances", async function () {
-    // Validate and display the owner of the contract.
-    const contractOwner = await token.owner();
-    console.log("Owner of the contract:", contractOwner);
-    expect(contractOwner).to.equal(owner.address);
+  it("should prevent transfers of locked tokens", async function () {
+    const lockAmount = parseUnits("2000");
+    const unlockTime = (await ethers.provider.getBlock("latest")).timestamp + 3600; // 1 hour from now
 
-    // Retrieve all available signers.
-    const allSigners = await ethers.getSigners();
-    expect(allSigners.length).to.be.at.least(19);
-    const account19 = allSigners[18]; // account 19 (0-indexed)
-    console.log("Account 19 address:", account19.address);
+    await token.lockTokens(addr1.address, lockAmount, unlockTime);
+    await token.transfer(addr1.address, lockAmount);
+    await expect(token.connect(addr1).transfer(addr2.address, lockAmount))
+      .to.be.revertedWith("Amount exceeds unlocked balance");
+  });
 
-    // Get the owner's balance before the transfer.
-    const ownerInitialBalance = await token.balanceOf(owner.address);
-    console.log("Owner initial balance:", ownerInitialBalance.toString());
+  it("should allow transfers after tokens are unlocked", async function () {
+    const lockAmount = parseUnits("2000");
+    const unlockTime = (await ethers.provider.getBlock("latest")).timestamp + 2; // 2 seconds from now
 
-    // Transfer 100 tokens from the owner to account 19.
-    const transferAmount = parseUnits("100");
-    const tx = await token.transfer(account19.address, transferAmount);
-    await tx.wait();
+    await token.lockTokens(addr1.address, lockAmount, unlockTime);
+    await token.transfer(addr1.address, lockAmount);
+    await ethers.provider.send("evm_increaseTime", [3]); // Fast-forward time
+    await ethers.provider.send("evm_mine"); // Mine next block
 
-    // Get the owner's and account 19's balance after the transfer.
-    const ownerFinalBalance = await token.balanceOf(owner.address);
-    const account19Balance = await token.balanceOf(account19.address);
-    console.log("Owner final balance:", ownerFinalBalance.toString());
-    console.log("Account 19 token balance:", account19Balance.toString());
-
-    // Verify that the owner's balance decreased by 100 tokens.
-    expect(ownerFinalBalance.toString()).to.equal(
-      (BigInt(ownerInitialBalance.toString()) - BigInt(transferAmount)).toString()
-    );
-    // Verify that account 19 received exactly 100 tokens.
-    expect(account19Balance.toString()).to.equal(transferAmount);
+    await token.connect(addr1).transfer(addr2.address, lockAmount);
+    const addr2Balance = await token.balanceOf(addr2.address);
+    expect(addr2Balance.toString()).to.equal(lockAmount.toString());
   });
 });

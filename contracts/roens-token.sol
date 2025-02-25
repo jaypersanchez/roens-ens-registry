@@ -30,42 +30,31 @@ contract RoensToken is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     constructor(address _taxWallet) ERC20("Roens", "ROENS") Ownable(msg.sender) {
         _mint(msg.sender, 100_000_000 * 10 ** decimals());
         taxWallet = _taxWallet;
+        _isExcludedFromLimits[msg.sender] = true; // Exclude owner from maxTxAmount limit
     }
 
-    /// @notice Allows the owner to pause all token transfers.
-    function pause() public onlyOwner {
-        _pause();
-    }
+    /// @dev Overrides transfer functions to enforce tax, blacklist, vesting, and limits.
+    function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20Pausable) {
+        // Exclude minting from checks
+        if (from != address(0)) {
+            require(!_disabled, "Token contract is disabled");
+            require(!_blacklist[from], "Sender is blacklisted");
+            require(!_blacklist[to], "Recipient is blacklisted");
+            require(amount <= maxTxAmount || _isExcludedFromLimits[from], "Transfer exceeds maxTxAmount");
+            require(balanceOf(from) - _lockedBalances[from] >= amount, "Amount exceeds unlocked balance");
+            require(block.timestamp >= _vesting[from].releaseTime || _vesting[from].amount == 0, "Tokens are still vested");
+        }
 
-    /// @notice Allows the owner to unpause token transfers.
-    function unpause() public onlyOwner {
-        _unpause();
-    }
+        uint256 taxAmount = (amount * transactionTax) / 100;
+        uint256 transferAmount = amount - taxAmount;
 
-    /// @notice Adds or removes an address from the blacklist.
-    function blacklistAddress(address account, bool value) external onlyOwner {
-        _blacklist[account] = value;
-    }
-
-    /// @notice Checks if an address is blacklisted.
-    function isBlacklisted(address account) public view returns (bool) {
-        return _blacklist[account];
+        super._update(from, taxWallet, taxAmount);
+        super._update(from, to, transferAmount);
     }
 
     /// @notice Allows the owner to set the maximum transaction amount.
     function setMaxTxAmount(uint256 amount) external onlyOwner {
         maxTxAmount = amount;
-    }
-
-    /// @notice Allows the owner to exclude an address from transaction limits.
-    function excludeFromLimits(address account, bool excluded) external onlyOwner {
-        _isExcludedFromLimits[account] = excluded;
-    }
-
-    /// @notice Allows the owner to set the transaction tax percentage.
-    function setTransactionTax(uint256 tax) external onlyOwner {
-        require(tax <= 10, "Tax too high");
-        transactionTax = tax;
     }
 
     /// @notice Allows the owner to set a vesting schedule for an address.
@@ -96,19 +85,24 @@ contract RoensToken is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
         return _lockedBalances[account];
     }
 
-    /// @dev Overrides transfer functions to enforce tax, blacklist, vesting, and limits.
-    function _update(address from, address to, uint256 amount) internal override(ERC20, ERC20Pausable) {
-        require(!_disabled, "Token contract is disabled");
-        require(!_blacklist[from], "Sender is blacklisted");
-        require(!_blacklist[to], "Recipient is blacklisted");
-        require(amount <= maxTxAmount || _isExcludedFromLimits[from], "Transfer exceeds maxTxAmount");
-        require(balanceOf(from) - _lockedBalances[from] >= amount, "Amount exceeds unlocked balance");
-        
-        uint256 taxAmount = (amount * transactionTax) / 100;
-        uint256 transferAmount = amount - taxAmount;
-        
-        super._update(from, taxWallet, taxAmount);
-        super._update(from, to, transferAmount);
+    /// @notice Allows the owner to pause all token transfers.
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    /// @notice Allows the owner to unpause token transfers.
+    function unpause() public onlyOwner {
+        _unpause();
+    }
+
+    /// @notice Adds or removes an address from the blacklist.
+    function blacklistAddress(address account, bool value) external onlyOwner {
+        _blacklist[account] = value;
+    }
+
+    /// @notice Checks if an address is blacklisted.
+    function isBlacklisted(address account) public view returns (bool) {
+        return _blacklist[account];
     }
 
     /// @notice Disable the contract instead of self-destructing.
