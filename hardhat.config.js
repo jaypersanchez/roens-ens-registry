@@ -4,6 +4,10 @@ require("dotenv").config();
 module.exports = {
   solidity: {
     version: "0.8.20",
+    paths: {
+      sources: "./contracts",
+      tests: "./test"
+    },
     settings: {
       optimizer: {
         enabled: true, // enable the optimizer

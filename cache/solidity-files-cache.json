@@ -458,6 +458,44 @@
       "artifacts": [
         "ERC20Pausable"
       ]
+    },
+    "C:\\Users\\jaypersanchez\\projects\\roens-ens-registry\\contracts\\ReentrancyAttacker.sol": {
+      "lastModificationDate": 1740523755986,
+      "contentHash": "ba8f356b32a7e238485158faac84315d",
+      "sourceName": "contracts/ReentrancyAttacker.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ReentrancyAttacker"
+      ]
     }
   }
 }
