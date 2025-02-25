@@ -38,8 +38,8 @@
       ]
     },
     "C:\\Users\\jaypersanchez\\projects\\roens-ens-registry\\contracts\\roens-token.sol": {
-      "lastModificationDate": 1740518769686,
-      "contentHash": "e2a4e2ec2226346422bf08086248cee2",
+      "lastModificationDate": 1740519003787,
+      "contentHash": "b5e81df521f867b337313af4ec51eb7f",
       "sourceName": "contracts/roens-token.sol",
       "solcConfig": {
         "version": "0.8.20",
