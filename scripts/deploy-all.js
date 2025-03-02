@@ -1,8 +1,14 @@
-const fs = require("fs");
-const path = require("path");
-const hre = require("hardhat");
+require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-ethers"); // ✅ Ensure this is included
+require("dotenv").config();
+require("hardhat-deploy");
+
 
 async function main() {
+  const fs = require("fs")
+  const path = require("path")
+
+  
   // Deploy ENSRegistry
   const ENSRegistry = await hre.ethers.getContractFactory("ENSRegistry");
   console.log("Deploying ENSRegistry...");
