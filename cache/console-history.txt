@@ -1,2 +1,21 @@
-await network.provider.send("evm_setAutomine", [true]);
-console.log("Latest block:", latestBlock);
+console.log(contract.interface.fragments);
+const contract = await hre.ethers.getContractAt("ENSRegistry", ensAddress);
+console.log(code);
+const code = await hre.ethers.provider.getCode(ensAddress);
+const ensAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Replace with actual ENSRegistry address
+console.log("RoensToken Code:", tokenCode);
+console.log("ENSRegistry Code:", ensCode);
+const tokenCode = await hre.ethers.provider.getCode(tokenAddress);
+const ensCode = await hre.ethers.provider.getCode(ensAddress);
+const tokenAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Replace with actual address
+const ensAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Replace with actual address
+console.log(code);
+const code = await hre.ethers.provider.getCode(contractAddress);
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // ENSRegistry address from error
+console.log(code);
+const code = await hre.ethers.provider.getCode("0x5FbDB2315678afecb367f032d93F642f64180aa3");
+console.log(deployments);
+const deployments = await hre.deployments.all();
+console.log(deployments);
+const deployments = await hre.deployments.all();
+exit
